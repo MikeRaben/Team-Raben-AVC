@@ -21,6 +21,13 @@ int servoR = 0;
 int servoDelay = 300;
 int servoPin = 10;
 
+int fw = 3;
+int rv = 5;
+int lf = 6;
+int rt = 9;
+
+int turnDelay = 300; //update this to correct over/understeer
+
 int stopDist = 75;
 int targetHeading;
 long distTraveled = 0;
@@ -31,44 +38,46 @@ bool frontClear, leftClear, rightClear;
 bool moving;
 
 RunningMedian samples = RunningMedian(30);
-RunningMedian compassSamples = RunningMedian(30);
 
 void setup() {
   Serial.begin(9600); //Opens serial connection at 9600bps.
   distTraveled = 0;
+  frontClear = true;
+
+  pinMode(3, OUTPUT);
+  pinMode(5, OUTPUT);
+  pinMode(6, OUTPUT);
+  pinMode(9, OUTPUT);
+
+  //compass setup
   Wire.begin();
   compass.init();
   compass.enableDefault();
   compass.m_min = (LSM303::vector<int16_t>) {
-    -726, -509, -321
+    -42, -700, -432
   };
   compass.m_max = (LSM303::vector<int16_t>) {
-    +325, +519, +706
+    +971, +238, +464
   };
-
   //Lidar Lite setup
   I2c.begin(); // Opens & joins the irc bus as master
   delay(100); // Waits to make sure everything is powered up before sending or receiving data
   I2c.timeOut(50); // Sets a timeout to ensure no locking up of sketch if I2C communication fails
 
   myServo.attach(servoPin);
+  myServo.write(servoC);
 
   //Setup wheel encoder
-  pinMode(encoderPin, INPUT);
-  attachInterrupt(0, encoderTick, LOW);
-  delay(100);
-  lookAround();
+  //  pinMode(encoderPin, INPUT);
+  //  attachInterrupt(0, encoderTick, HIGH);
 }
 
 void loop() {
   drive();
-  navigate();
 }
 
 int measure() {
   samples.clear();
-
-  //Prepare Lidar Lite
   // Write 0x04 to register 0x00
   uint8_t nackack = 100; // Setup variable to hold ACK/NACK resopnses
   while (nackack != 0)  // While NACK keep going (i.e. continue polling until sucess message (ACK) is received )
@@ -98,13 +107,10 @@ int measure() {
 }
 
 int checkCompass() {
-  compassSamples.clear();
-  for (int i = 0; i < 30; i++)
-  {
-    compass.read();
-    compassSamples.add(compass.heading());
-  }
-  return (int) compassSamples.getMedian();
+  compass.read();
+  return compass.heading((LSM303::vector<int>) {
+    0, 1, 0
+  }); //? switch 1s around to get X heading
 }
 
 void lookAround() {
@@ -121,48 +127,81 @@ void lookAround() {
   rightClear = measure() < stopDist;
 
   myServo.write(servoC);
+  delay(servoDelay);
 }
 
 void navigate() {
-  int currentHeading = checkCompass();
-  if (distTraveled < legDist[0]) {
-    targetHeading = legHeading[0];
-  } else if (distTraveled < legDist[1]) {
-    targetHeading = legHeading[1];
-  } else if (distTraveled < legDist[2]) {
-    targetHeading = legHeading[2];
-  } else if (distTraveled < legDist[3]) {
-    targetHeading = legHeading[3];
-  }
-
-  if (currentHeading + 5 < targetHeading) {
-    rightTurn();
-  } else if (currentHeading - 5 > targetHeading) {
-    leftTurn();
-  }
+  Serial.println("Navigate: ");
+  Serial.print(checkCompass());
 }
 
 void drive() {
-  if (frontClear) {
-    if (!moving) {
-      forward();
-    }
-  } else {
-    //front not clear, check if left or right were clear
+  myServo.write(servoC);
+  delay(servoDelay);
+  frontClear = measure() < stopDist;
+
+  if (frontClear && !moving) {
+    forward();
+  }
+  if (frontClear && moving) {
+    navigate();
+  }
+  if (!frontClear) {
+    stopAll();
+    lookAround();
     if (rightClear) {
+      forward();
       rightTurn();
-    } else {
-      if (leftClear) {
-        leftTurn();
-      } else {
-        //front left and right all blocked, back up
-        stopAll();
-        reverse();
-      }
     }
+    if (leftClear) {
+      forward();
+      leftTurn();
+    }
+  }
+  if (!frontClear && !rightClear && !leftClear) {
+    stopAll();
+    reverse();
+    delay(500);
+    stopAll();
   }
 }
 
 void encoderTick() {
   distTraveled ++;
+}
+void forward()
+{
+  digitalWrite(rv, LOW);
+  digitalWrite(fw, HIGH);
+  moving = true;
+}
+
+void reverse()
+{
+  digitalWrite(fw, LOW);
+  digitalWrite(rv, HIGH);
+  delay(100);
+  digitalWrite(rv, LOW);
+
+}
+void stopAll()
+{
+  digitalWrite(fw, LOW);
+  digitalWrite(rv, LOW);
+  digitalWrite(lf, LOW);
+  digitalWrite(rt, LOW);
+  moving = false;
+}
+
+void leftTurn()
+{
+  digitalWrite(lf, HIGH);
+  delay(turnDelay);
+  digitalWrite(lf, LOW);
+}
+void rightTurn()
+{
+  digitalWrite(rt, HIGH);
+  delay(turnDelay);
+  digitalWrite(rt, LOW);
 }
