@@ -34,7 +34,6 @@ long distTraveled = 0;
 int legHeading [4] = {0, 90, 180, 270};
 int legDist [5] = {10, 20, 30, 40};
 
-bool frontClear, leftClear, rightClear;
 bool moving;
 
 RunningMedian samples = RunningMedian(30);
@@ -42,7 +41,6 @@ RunningMedian samples = RunningMedian(30);
 void setup() {
   Serial.begin(9600); //Opens serial connection at 9600bps.
   distTraveled = 0;
-  frontClear = true;
 
   pinMode(3, OUTPUT);
   pinMode(5, OUTPUT);
@@ -70,6 +68,7 @@ void setup() {
   //Setup wheel encoder
   //  pinMode(encoderPin, INPUT);
   //  attachInterrupt(0, encoderTick, HIGH);
+  moving = false;
 }
 
 void loop() {
@@ -109,25 +108,8 @@ int measure() {
 int checkCompass() {
   compass.read();
   return compass.heading((LSM303::vector<int>) {
-    0, 1, 0
-  }); //? switch 1s around to get X heading
-}
-
-void lookAround() {
-  myServo.write(servoL);
-  delay(servoDelay);
-  leftClear = measure() < stopDist;
-
-  myServo.write(servoC);
-  delay(servoDelay);
-  frontClear = measure() < stopDist;
-
-  myServo.write(servoR);
-  delay(servoDelay);
-  rightClear = measure() < stopDist;
-
-  myServo.write(servoC);
-  delay(servoDelay);
+    1, 0, 0
+  });
 }
 
 void navigate() {
@@ -135,34 +117,36 @@ void navigate() {
   Serial.print(checkCompass());
 }
 
-void drive() {
+void drive() {  
   myServo.write(servoC);
   delay(servoDelay);
-  frontClear = measure() < stopDist;
-
-  if (frontClear && !moving) {
+  bool frontClear = measure() < stopDist;
+  
+  if (frontClear) {
+    Serial.println("Front Clear, go forward");
     forward();
-  }
-  if (frontClear && moving) {
     navigate();
-  }
-  if (!frontClear) {
+  } else {
+    Serial.println("Front blocked looking right");
     stopAll();
-    lookAround();
-    if (rightClear) {
+    myServo.write(servoR);
+    if (measure() < stopDist) {
+      Serial.println("Right clear turning right");
       forward();
       rightTurn();
+    } else {
+      Serial.println("F and R blocked looking L");
+      myServo.write(servoL);
+      if (measure() < stopDist) {
+        Serial.println("L clear turning Left");
+        forward();
+        leftTurn();
+      } else {
+        Serial.println("All blocked reversing");
+        reverse();
+        stopAll();
+      }
     }
-    if (leftClear) {
-      forward();
-      leftTurn();
-    }
-  }
-  if (!frontClear && !rightClear && !leftClear) {
-    stopAll();
-    reverse();
-    delay(500);
-    stopAll();
   }
 }
 
@@ -171,16 +155,18 @@ void encoderTick() {
 }
 void forward()
 {
-  digitalWrite(rv, LOW);
-  digitalWrite(fw, HIGH);
-  moving = true;
+  if (!moving){
+    digitalWrite(rv, LOW);
+    digitalWrite(fw, HIGH);
+    moving = true;
+  }
 }
 
 void reverse()
 {
   digitalWrite(fw, LOW);
   digitalWrite(rv, HIGH);
-  delay(100);
+  delay(500);
   digitalWrite(rv, LOW);
 
 }
