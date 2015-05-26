@@ -28,7 +28,7 @@ int rt = 9;
 
 int turnDelay = 300; //update this to correct over/understeer
 
-int stopDist = 75;
+float stopDist = 75.0;
 int targetHeading;
 long distTraveled = 0;
 int legHeading [4] = {0, 90, 180, 270};
@@ -75,7 +75,7 @@ void loop() {
   drive();
 }
 
-int measure() {
+float measure() {
   samples.clear();
   // Write 0x04 to register 0x00
   uint8_t nackack = 100; // Setup variable to hold ACK/NACK resopnses
@@ -102,7 +102,7 @@ int measure() {
     int distance = (distanceArray[0] << 8) + distanceArray[1];  // Shift high byte [0] 8 to the left and add low byte [1] to create 16-bit int
     samples.add(distance);
   }
-  return (int) samples.getMedian();
+  return samples.getMedian();
 }
 
 int checkCompass() {
@@ -114,13 +114,13 @@ int checkCompass() {
 
 void navigate() {
   Serial.println("Navigate: ");
-  Serial.print(checkCompass());
+  Serial.println(checkCompass());
 }
 
 void drive() {  
   myServo.write(servoC);
   delay(servoDelay);
-  bool frontClear = measure() < stopDist;
+  bool frontClear = measure() > stopDist;
   
   if (frontClear) {
     Serial.println("Front Clear, go forward");
@@ -155,6 +155,7 @@ void encoderTick() {
 }
 void forward()
 {
+  Serial.println("FORWARD");
   if (!moving){
     digitalWrite(rv, LOW);
     digitalWrite(fw, HIGH);
@@ -164,6 +165,7 @@ void forward()
 
 void reverse()
 {
+  Serial.println("REVERSE");
   digitalWrite(fw, LOW);
   digitalWrite(rv, HIGH);
   delay(500);
@@ -172,6 +174,7 @@ void reverse()
 }
 void stopAll()
 {
+  Serial.println("STOP ALL");
   digitalWrite(fw, LOW);
   digitalWrite(rv, LOW);
   digitalWrite(lf, LOW);
@@ -181,12 +184,14 @@ void stopAll()
 
 void leftTurn()
 {
+  Serial.println("LEFT");
   digitalWrite(lf, HIGH);
   delay(turnDelay);
   digitalWrite(lf, LOW);
 }
 void rightTurn()
 {
+  Serial.println("RIGHT");
   digitalWrite(rt, HIGH);
   delay(turnDelay);
   digitalWrite(rt, LOW);
