@@ -15,9 +15,9 @@ LSM303 compass;
 
 Servo myServo;
 
-int servoL = 180;
+int servoL = 135;
 int servoC = 90;
-int servoR = 0;
+int servoR = 45;
 int servoDelay = 300;
 int servoPin = 10;
 
@@ -26,9 +26,9 @@ int rv = 5;
 int lf = 6;
 int rt = 9;
 
-int turnDelay = 300; //update this to correct over/understeer
+int turnDelay = 250; //update this to correct over/understeer
 
-float stopDist = 75.0;
+float stopDist = 100.0;
 int targetHeading;
 long distTraveled = 0;
 int legHeading [4] = {0, 90, 180, 270};
@@ -130,14 +130,16 @@ void drive() {
     Serial.println("Front blocked looking right");
     stopAll();
     myServo.write(servoR);
-    if (measure() < stopDist) {
+    delay(servoDelay);
+    if (measure() > stopDist) {
       Serial.println("Right clear turning right");
       forward();
       rightTurn();
     } else {
       Serial.println("F and R blocked looking L");
       myServo.write(servoL);
-      if (measure() < stopDist) {
+      delay(servoDelay);
+      if (measure() > stopDist) {
         Serial.println("L clear turning Left");
         forward();
         leftTurn();
