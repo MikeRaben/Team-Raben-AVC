@@ -9,7 +9,9 @@
 #define    MeasureValue        0x04          // Value to initiate ranging.
 #define    RegisterHighLowB    0x8f          // Register to get both High and Low bytes in 1 call.
 
-#define encoderPin  2                        // Wheel encoder pin
+#define encoderPin  2   // Wheel encoder pin
+volatile unsigned long lastTime;
+long interval = 150;
 
 LSM303 compass;
 
@@ -37,11 +39,11 @@ float stopDist = 85.0;
 float targetHeading;
 long distTraveled;
 int legHeading [4] = {0.0, 90.0, 180.0, 270.0};
-int legDist [4] = {10, 20, 30, 40};
+int legDist [4] = {20, 40, 60, 80};
 
 bool moving, frontClear, rightClear, leftClear;
 
-RunningMedian samples = RunningMedian(30);
+RunningMedian samples = RunningMedian(10);
 
 void setup() {
   Serial.begin(9600);
@@ -67,12 +69,13 @@ void setup() {
 
   //Setup wheel encoder
   pinMode(encoderPin, INPUT);
-  attachInterrupt(0, encoderTick, HIGH);
+  attachInterrupt(0, encoderTick, RISING);
   moving = false;
 }
 
 void loop() {
   drive();
+
 }
 
 float measure() {
@@ -84,7 +87,7 @@ float measure() {
     nackack = I2c.write(LIDARLite_ADDRESS, RegisterMeasure, MeasureValue); // Write 0x04 to 0x00
     delay(1); // Wait 1 ms to prevent overpolling
   }
-  for (int i = 0; i < 30; i++)
+  for (int i = 0; i < 10; i++)
   {
 
     byte distanceArray[2]; // array to store distance bytes from read function
@@ -105,11 +108,16 @@ float measure() {
   return samples.getMedian();
 }
 
-int checkCompass() {
+float checkCompass() {
   compass.read();
-  return compass.heading((LSM303::vector<int>) {
+  float newHeading = compass.heading((LSM303::vector<int>) {
     1, 0, 0
   });
+  if (newHeading > 180.0) {
+    return newHeading - 360.0;
+  } else {
+    return newHeading;
+  }
 }
 
 void navigate() {
@@ -122,7 +130,7 @@ void navigate() {
   if (distTraveled > legDist[1] && distTraveled < legDist[2]) {
     targetHeading = legHeading[2];
   }
-  if (distTraveled > legDist[2]){
+  if (distTraveled > legDist[2]) {
     targetHeading = legHeading[3];
   }
 
@@ -169,6 +177,7 @@ void drive() {
     navigate();
   } else {
     stopAll();
+    reverse();
     sweep();
     if (rightClear) {
       forward();
@@ -186,7 +195,10 @@ void drive() {
 }
 
 void encoderTick() {
-  distTraveled ++;
+  if ((millis() - lastTime) >= interval) {
+    distTraveled ++;
+    lastTime = millis();
+  }
 }
 void forward()
 {
