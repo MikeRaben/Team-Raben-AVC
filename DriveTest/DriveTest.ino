@@ -11,7 +11,7 @@
 
 #define encoderPin  2   // Wheel encoder pin
 volatile unsigned long lastTime;
-long interval = 150;
+long interval = 60;
 
 LSM303 compass;
 
@@ -20,7 +20,7 @@ Servo myServo;
 int servoL = 135;
 int servoC = 90;
 int servoR = 45;
-int servoDelay = 150;
+int servoDelay = 100;
 int servoPin = 10;
 
 int fw = 3;
@@ -28,17 +28,17 @@ int rv = 5;
 int lf = 6;
 int rt = 9;
 
-int driveSpeed = 110;
+int driveSpeed = 140;
 int turnSpeed = 255;
-float wiggle = 2.5;
+float wiggle = 5.0;
 
-int turnDelay = 350;
+int turnDelay = 500;
 
-float stopDist = 85.0;
+float stopDist = 75.0;
 
 float targetHeading;
 long distTraveled;
-int legHeading [4] = {0.0, 90.0, 180.0, 270.0};
+int legHeading [4] = {0.0, 90.0, 179.0, -90.0};
 int legDist [4] = {20, 40, 60, 80};
 
 bool moving, frontClear, rightClear, leftClear;
@@ -75,7 +75,6 @@ void setup() {
 
 void loop() {
   drive();
-
 }
 
 float measure() {
@@ -121,6 +120,7 @@ float checkCompass() {
 }
 
 void navigate() {
+  
   if (distTraveled < legDist[0]) {
     targetHeading = legHeading[0];
   }
@@ -133,6 +133,7 @@ void navigate() {
   if (distTraveled > legDist[2]) {
     targetHeading = legHeading[3];
   }
+  Serial.println(targetHeading);
 
   float currentHeading = checkCompass();
 
@@ -148,6 +149,8 @@ void navigate() {
     }
     analogWrite(lf, 0);
   }
+  analogWrite(lf, 0);
+  analogWrite(rt, 0);
 }
 
 void sweep() {
