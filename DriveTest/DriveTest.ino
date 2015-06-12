@@ -4,14 +4,18 @@
 #include <LSM303.h>
 #include <Wire.h>
 
+bool debugging = true;
+bool objAvoid = false;
+
 #define    LIDARLite_ADDRESS   0x62          // Default I2C Address of LIDAR-Lite.
 #define    RegisterMeasure     0x00          // Register to write to initiate ranging.
 #define    MeasureValue        0x04          // Value to initiate ranging.
 #define    RegisterHighLowB    0x8f          // Register to get both High and Low bytes in 1 call.
 
 #define encoderPin  2   // Wheel encoder pin
-volatile unsigned long lastTime;
-long interval = 60;
+volatile unsigned long lastTick, lastNav;
+long interval = 100;
+long navDelay = 1000;
 
 LSM303 compass;
 
@@ -30,20 +34,26 @@ int rt = 9;
 
 int driveSpeed = 140;
 int turnSpeed = 255;
-float wiggle = 5.0;
+float wiggle = 3.5;
 
 int turnDelay = 500;
 
-float stopDist = 75.0;
+float stopDist = 75;
 
 float targetHeading;
+float degPerMilli = 0.086022222f;
+
 long distTraveled;
-int legHeading [4] = {0.0, 90.0, 179.0, -90.0};
-int legDist [4] = {20, 40, 60, 80};
+int legHeading [4];
+int legDist [5] = {15, 75, 115, 175, 200};    //Test Bball Court
+// int legDist[5] = {50, 325, 430, 700, 760};  //Full Course
+// int legDist[5] = {50, 160, 265, 375, 435};  //Short Cut
+
 
 bool moving, frontClear, rightClear, leftClear;
 
-RunningMedian samples = RunningMedian(10);
+RunningMedian samples = RunningMedian(50);
+RunningMedian headSamples = RunningMedian(50);
 
 void setup() {
   Serial.begin(9600);
@@ -54,30 +64,51 @@ void setup() {
   compass.init();
   compass.enableDefault();
   compass.m_min = (LSM303::vector<int16_t>) {
-    -42, -700, -432
+    -257, -915, -717
   };
   compass.m_max = (LSM303::vector<int16_t>) {
-    +971, +238, +464
+    +961, +244, +372
   };
-  //Lidar Lite setup
-  I2c.begin(); // Opens & joins the irc bus as master
-  delay(100); // Waits to make sure everything is powered up before sending or receiving data
-  I2c.timeOut(50); // Sets a timeout to ensure no locking up of sketch if I2C communication fails
 
-  myServo.attach(servoPin);
-  myServo.write(servoC);
+  legHeading[0] = checkCompass();
+  for (int i = 1; i < 4; i++) {
+    if (legHeading[i - 1] + 90 > 180) {
+      legHeading[i] = legHeading[i - 1] - 270;
+    } else {
+      legHeading[i] = legHeading[i - 1] + 90;
+    }
+    if (debugging) {
+      Serial.println("Headings");
+      Serial.print(legHeading[0]);
+      Serial.print("\t");
+      Serial.print(legHeading[1]);
+      Serial.print("\t");
+      Serial.print(legHeading[2]);
+      Serial.print("\t");
+      Serial.println(legHeading[3]);
+    }
+  }
+  if (objAvoid) {
+    //Lidar Lite setup
+    I2c.begin(); // Opens & joins the irc bus as master
+    delay(100); // Waits to make sure everything is powered up before sending or receiving data
+    I2c.timeOut(50); // Sets a timeout to ensure no locking up of sketch if I2C communication fails
 
+    myServo.attach(servoPin);
+    myServo.write(servoC);
+  }
   //Setup wheel encoder
   pinMode(encoderPin, INPUT);
   attachInterrupt(0, encoderTick, RISING);
   moving = false;
+  frontClear = true;
 }
 
 void loop() {
   drive();
 }
 
-float measure() {
+int measure() {
   samples.clear();
   // Write 0x04 to register 0x00
   uint8_t nackack = 100; // Setup variable to hold ACK/NACK resopnses
@@ -86,7 +117,7 @@ float measure() {
     nackack = I2c.write(LIDARLite_ADDRESS, RegisterMeasure, MeasureValue); // Write 0x04 to 0x00
     delay(1); // Wait 1 ms to prevent overpolling
   }
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < 50; i++)
   {
 
     byte distanceArray[2]; // array to store distance bytes from read function
@@ -107,50 +138,56 @@ float measure() {
   return samples.getMedian();
 }
 
-float checkCompass() {
-  compass.read();
-  float newHeading = compass.heading((LSM303::vector<int>) {
-    1, 0, 0
-  });
-  if (newHeading > 180.0) {
-    return newHeading - 360.0;
-  } else {
-    return newHeading;
+int checkCompass() {
+  headSamples.clear();
+  for (int i = 0; i < 50; i++)
+  {
+    compass.read();
+    int newHeading = compass.heading((LSM303::vector<int>) {
+      1, 0, 0
+    });
+    if (newHeading > 180) {
+      headSamples.add(newHeading - 360);
+    } else {
+      headSamples.add(newHeading);
+    }
+    delay(1);
   }
+  return (int) headSamples.getMedian();
 }
 
 void navigate() {
-  
-  if (distTraveled < legDist[0]) {
-    targetHeading = legHeading[0];
-  }
-  if (distTraveled > legDist[0] && distTraveled < legDist[1]) {
-    targetHeading = legHeading[1];
-  }
-  if (distTraveled > legDist[1] && distTraveled < legDist[2]) {
-    targetHeading = legHeading[2];
-  }
-  if (distTraveled > legDist[2]) {
-    targetHeading = legHeading[3];
-  }
-  Serial.println(targetHeading);
+  long currentMillis = millis();
+  if ((currentMillis - lastNav) > navDelay) {
 
-  float currentHeading = checkCompass();
+    if (distTraveled < legDist[0]) {
+      targetHeading = legHeading[0];
+    }
+    if (distTraveled > legDist[0] && distTraveled < legDist[1]) {
+      targetHeading = legHeading[1];
+    }
+    if (distTraveled > legDist[1] && distTraveled < legDist[2]) {
+      targetHeading = legHeading[2];
+    }
+    if (distTraveled > legDist[2]) {
+      targetHeading = legHeading[3];
+    }
+    if (distTraveled > legDist[4]){
+      stopAll();
+      while(1){}
+    }
 
-  if (currentHeading < targetHeading - wiggle) {
-    while (checkCompass() < targetHeading - wiggle) {
-      analogWrite(rt, turnSpeed);
+    int currentHeading = checkCompass();
+    int turnDeg = targetHeading - currentHeading;
+    if (turnDeg < -180) {
+      turnDeg += 360;
     }
-    analogWrite(rt, 0);
-  }
-  if (currentHeading > targetHeading + wiggle) {
-    while (checkCompass() > targetHeading + wiggle) {
-      analogWrite(lf, turnSpeed);
+    if (turnDeg > 180) {
+      turnDeg -= 360;
     }
-    analogWrite(lf, 0);
+    lastNav = currentMillis;
+    headingHold(turnDeg);
   }
-  analogWrite(lf, 0);
-  analogWrite(rt, 0);
 }
 
 void sweep() {
@@ -171,9 +208,11 @@ void sweep() {
 }
 
 void drive() {
-  myServo.write(servoC);
-  delay(servoDelay);
-  frontClear = measure() > stopDist;
+  if (objAvoid) {
+    myServo.write(servoC);
+    delay(servoDelay);
+    frontClear = measure() > stopDist;
+  }
 
   if (frontClear) {
     forward();
@@ -198,9 +237,10 @@ void drive() {
 }
 
 void encoderTick() {
-  if ((millis() - lastTime) >= interval) {
+  long currentMillis = millis();
+  if ((currentMillis - lastTick) > interval) {
     distTraveled ++;
-    lastTime = millis();
+    lastTick = currentMillis;
   }
 }
 void forward()
@@ -215,7 +255,7 @@ void forward()
 void reverse()
 {
   analogWrite(fw, 0);
-  analogWrite(rv, 200);
+  analogWrite(rv, 255);
   delay(500);
   analogWrite(rv, 0);
 
@@ -239,5 +279,34 @@ void rightTurn()
 {
   analogWrite(rt, turnSpeed);
   delay(turnDelay);
+  analogWrite(rt, 0);
+}
+
+void headingHold(float delta) {
+  if (debugging) {
+    Serial.println("Delta ");
+    Serial.println(delta);
+  }
+
+  int thisDelay = (int) delta / degPerMilli;
+  if (delta < -wiggle) {
+    if (debugging) {
+      Serial.println("Left to ");
+      Serial.println(thisDelay);
+    }
+    analogWrite(lf, turnSpeed);
+    delay(abs(thisDelay));
+    analogWrite(rt, 0);
+  }
+  if (delta > wiggle) {
+    if (debugging) {
+      Serial.println("Right to ");
+      Serial.println(thisDelay);
+    }
+    analogWrite(rt, turnSpeed);
+    delay(abs(thisDelay));
+    analogWrite(lf, 0);
+  }
+  analogWrite(lf, 0);
   analogWrite(rt, 0);
 }
