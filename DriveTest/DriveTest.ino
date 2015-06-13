@@ -4,8 +4,23 @@
 #include <LSM303.h>
 #include <Wire.h>
 
-bool debugging = true;
-bool objAvoid = false;
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+bool debugging = false;                     //prints debug messages for testing
+bool objAvoid = false;                      //Use the lidar for avoiding, false for testing
+long interval = 100;                        //Deley for debouncing reed switch
+long navDelay = 500;                        //Avoid constantly making steering adjustments
+int driveSpeed = 255;                       //between 0 and 255 below 90 doesnt move
+int turnSpeed = 255;                        //constant for writing steering motor
+float wiggle = 3.5;                         //+/- degrees steering can be off without adjusting
+int turnDelay = 500;                        //used for object avoiding turns only
+int stopDist = 75;                          //distance in cm to start avoiding objects
+float degPerMilli = 0.0875;            //number of degrees turning for 1 milli will change heading
+
+int legDist [5] = {15, 60, 90, 135};           //Basketball Court
+// int legDist[5] = {50, 325, 430, 700, 760};  //Full Course
+// int legDist[5] = {50, 160, 265, 375, 435};  //Short Cut
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define    LIDARLite_ADDRESS   0x62          // Default I2C Address of LIDAR-Lite.
 #define    RegisterMeasure     0x00          // Register to write to initiate ranging.
@@ -13,12 +28,10 @@ bool objAvoid = false;
 #define    RegisterHighLowB    0x8f          // Register to get both High and Low bytes in 1 call.
 
 #define encoderPin  2   // Wheel encoder pin
+
 volatile unsigned long lastTick, lastNav;
-long interval = 100;
-long navDelay = 1000;
 
 LSM303 compass;
-
 Servo myServo;
 
 int servoL = 135;
@@ -32,28 +45,13 @@ int rv = 5;
 int lf = 6;
 int rt = 9;
 
-int driveSpeed = 140;
-int turnSpeed = 255;
-float wiggle = 3.5;
-
-int turnDelay = 500;
-
-float stopDist = 75;
-
-float targetHeading;
-float degPerMilli = 0.086022222f;
-
+int targetHeading;
 long distTraveled;
 int legHeading [4];
-int legDist [5] = {15, 75, 115, 175, 200};    //Test Bball Court
-// int legDist[5] = {50, 325, 430, 700, 760};  //Full Course
-// int legDist[5] = {50, 160, 265, 375, 435};  //Short Cut
-
-
 bool moving, frontClear, rightClear, leftClear;
 
-RunningMedian samples = RunningMedian(50);
-RunningMedian headSamples = RunningMedian(50);
+RunningMedian samples = RunningMedian(50);      //Arrays to store measurements then return the median
+RunningMedian headSamples = RunningMedian(50);  //Helps reduce sensor noise
 
 void setup() {
   Serial.begin(9600);
@@ -70,6 +68,7 @@ void setup() {
     +961, +244, +372
   };
 
+  //Calculate the heading for each leg
   legHeading[0] = checkCompass();
   for (int i = 1; i < 4; i++) {
     if (legHeading[i - 1] + 90 > 180) {
@@ -77,17 +76,18 @@ void setup() {
     } else {
       legHeading[i] = legHeading[i - 1] + 90;
     }
-    if (debugging) {
-      Serial.println("Headings");
-      Serial.print(legHeading[0]);
-      Serial.print("\t");
-      Serial.print(legHeading[1]);
-      Serial.print("\t");
-      Serial.print(legHeading[2]);
-      Serial.print("\t");
-      Serial.println(legHeading[3]);
-    }
   }
+  if (debugging) {
+    Serial.println("Leg Headings");
+    Serial.print(legHeading[0]);
+    Serial.print("\t");
+    Serial.print(legHeading[1]);
+    Serial.print("\t");
+    Serial.print(legHeading[2]);
+    Serial.print("\t");
+    Serial.println(legHeading[3]);
+  }
+
   if (objAvoid) {
     //Lidar Lite setup
     I2c.begin(); // Opens & joins the irc bus as master
@@ -135,7 +135,7 @@ int measure() {
     int distance = (distanceArray[0] << 8) + distanceArray[1];  // Shift high byte [0] 8 to the left and add low byte [1] to create 16-bit int
     samples.add(distance);
   }
-  return samples.getMedian();
+  return (int) samples.getMedian();
 }
 
 int checkCompass() {
@@ -159,7 +159,6 @@ int checkCompass() {
 void navigate() {
   long currentMillis = millis();
   if ((currentMillis - lastNav) > navDelay) {
-
     if (distTraveled < legDist[0]) {
       targetHeading = legHeading[0];
     }
@@ -169,12 +168,15 @@ void navigate() {
     if (distTraveled > legDist[1] && distTraveled < legDist[2]) {
       targetHeading = legHeading[2];
     }
-    if (distTraveled > legDist[2]) {
+    if (distTraveled > legDist[2] && distTraveled < legDist[3]) {
       targetHeading = legHeading[3];
     }
-    if (distTraveled > legDist[4]){
+    if (distTraveled > legDist[3] && distTraveled < legDist[4]) {
+      targetHeading = legHeading[0];
+    }
+    if (distTraveled > legDist[4]) {
       stopAll();
-      while(1){}
+      delay(15000);
     }
 
     int currentHeading = checkCompass();
