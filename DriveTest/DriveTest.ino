@@ -16,7 +16,7 @@ int turnDelay = 500;                        //used for object avoiding turns onl
 int stopDist = 75;                          //distance in cm to start avoiding objects
 float degPerMilli = 0.0875;            //number of degrees turning for 1 milli will change heading
 
-int legDist [5] = {15, 60, 90, 135};           //Basketball Court
+int legDist [5] = {15, 61, 92, 138, 153};      //Basketball Court
 // int legDist[5] = {50, 325, 430, 700, 760};  //Full Course
 // int legDist[5] = {50, 160, 265, 375, 435};  //Short Cut
 
@@ -157,6 +157,10 @@ int checkCompass() {
 }
 
 void navigate() {
+  if(debugging){
+    Serial.println("Navigate");
+    Serial.println(distTraveled);
+  }
   long currentMillis = millis();
   if ((currentMillis - lastNav) > navDelay) {
     if (distTraveled < legDist[0]) {
