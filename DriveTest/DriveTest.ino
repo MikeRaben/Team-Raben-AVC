@@ -8,15 +8,16 @@
 bool debugging = false;                     //prints debug messages for testing
 bool objAvoid = false;                      //Use the lidar for avoiding, false for testing
 long interval = 100;                        //Deley for debouncing reed switch
-long navDelay = 500;                        //Avoid constantly making steering adjustments
+long navDelay = 750;                        //Avoid constantly making steering adjustments
 int driveSpeed = 255;                       //between 0 and 255 below 90 doesnt move
 int turnSpeed = 255;                        //constant for writing steering motor
-float wiggle = 3.5;                         //+/- degrees steering can be off without adjusting
+float wiggle = 4.0;                         //+/- degrees steering can be off without adjusting
 int turnDelay = 500;                        //used for object avoiding turns only
 int stopDist = 75;                          //distance in cm to start avoiding objects
-float degPerMilli = 0.0875;            //number of degrees turning for 1 milli will change heading
+float degPerMilli = 0.087;                  //number of degrees turning for 1 milli will change heading
 
 int legDist [5] = {15, 61, 92, 138, 153};      //Basketball Court
+// int legDist [5] = {6, 21, 33, 48, 54};      //Basement
 // int legDist[5] = {50, 325, 430, 700, 760};  //Full Course
 // int legDist[5] = {50, 160, 265, 375, 435};  //Short Cut
 
@@ -184,6 +185,12 @@ void navigate() {
     }
 
     int currentHeading = checkCompass();
+      if(debugging){
+    Serial.println("Current Heading\tTarget");
+    Serial.print(currentHeading);
+    Serial.print("\t");
+    Serial.println(targetHeading);
+  }
     int turnDeg = targetHeading - currentHeading;
     if (turnDeg < -180) {
       turnDeg += 360;
