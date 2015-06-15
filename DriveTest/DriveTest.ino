@@ -158,6 +158,8 @@ int checkCompass() {
 }
 
 void navigate() {
+  int newHeading;
+  bool allowBigTurn;
   if(debugging){
     Serial.println("Navigate");
     Serial.println(distTraveled);
@@ -165,28 +167,35 @@ void navigate() {
   long currentMillis = millis();
   if ((currentMillis - lastNav) > navDelay) {
     if (distTraveled < legDist[0]) {
-      targetHeading = legHeading[0];
+      newHeading = legHeading[0];
     }
     if (distTraveled > legDist[0] && distTraveled < legDist[1]) {
-      targetHeading = legHeading[1];
+      newHeading = legHeading[1];
     }
     if (distTraveled > legDist[1] && distTraveled < legDist[2]) {
-      targetHeading = legHeading[2];
+      newHeading = legHeading[2];
     }
     if (distTraveled > legDist[2] && distTraveled < legDist[3]) {
-      targetHeading = legHeading[3];
+      newHeading = legHeading[3];
     }
     if (distTraveled > legDist[3] && distTraveled < legDist[4]) {
-      targetHeading = legHeading[0];
+      newHeading = legHeading[0];
     }
     if (distTraveled > legDist[4]) {
       stopAll();
-      delay(15000);
+      delay(5000);
+    }
+    if (newHeading != targetHeading){
+      allowBigTurn = true;
+      targetHeading = newHeading;
+    } else {
+      allowBigTurn = false;
+      targetHeading = newHeading;
     }
 
     int currentHeading = checkCompass();
       if(debugging){
-    Serial.println("Current Heading\tTarget");
+    Serial.println("Current Heading\t Target");
     Serial.print(currentHeading);
     Serial.print("\t");
     Serial.println(targetHeading);
@@ -199,7 +208,7 @@ void navigate() {
       turnDeg -= 360;
     }
     lastNav = currentMillis;
-    headingHold(turnDeg);
+    headingHold(turnDeg, allowBigTurn);
   }
 }
 
@@ -295,10 +304,17 @@ void rightTurn()
   analogWrite(rt, 0);
 }
 
-void headingHold(float delta) {
+void headingHold(float delta, bool bigTurn) {
   if (debugging) {
-    Serial.println("Delta ");
-    Serial.println(delta);
+    Serial.println("Delta \t Big turn");
+    Serial.print(delta);
+    Serial.print("\t");
+    Serial.println(bigTurn);
+  }
+  
+  // minimize big swinging turns
+  if(!bigTurn && delta > 30){
+    delta = delta/3;
   }
 
   int thisDelay = (int) delta / degPerMilli;
