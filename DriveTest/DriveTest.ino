@@ -16,9 +16,9 @@ int turnDelay = 500;                        //used for object avoiding turns onl
 int stopDist = 75;                          //distance in cm to start avoiding objects
 float degPerMilli = 0.087;                  //number of degrees turning for 1 milli will change heading
 
-int legDist [5] = {41, 92, 133, 184, 225};     //Basketball Court
+// int legDist [5] = {41, 92, 133, 184, 225};     //Basketball Court
 // int legDist[5] = {59, 338, 456, 735, 794};  //AVC Full Course
-// int legDist[5] = {59, 185, 303, 429, 488};  //AVC Short Cut
+int legDist[5] = {59, 185, 303, 429, 488};  //AVC Short Cut
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -47,7 +47,9 @@ int rt = 9;
 
 int targetHeading;
 long distTraveled;
-int legHeading [4];
+// int legHeading [4];
+int legHeading[5] = {-53, 12, 112, -130, -53};
+
 bool moving, frontClear, rightClear, leftClear, tracking;
 
 RunningMedian samples = RunningMedian(50);      //Arrays to store measurements then return the median
@@ -68,8 +70,10 @@ void setup() {
     +961, +244, +372
   };
 
+/*
   //Calculate the heading for each leg
-  legHeading[0] = checkCompass();
+  legHeading[5] = checkCompass();
+  
   for (int i = 1; i < 4; i++) {
     if (legHeading[i - 1] + 90 > 180) {
       legHeading[i] = legHeading[i - 1] - 270;
@@ -77,6 +81,8 @@ void setup() {
       legHeading[i] = legHeading[i - 1] + 90;
     }
   }
+  
+  */
   if (debugging) {
     Serial.println("Leg Headings");
     Serial.print(legHeading[0]);
@@ -103,11 +109,14 @@ void setup() {
   moving = false;
   frontClear = true;
   tracking = true;
+  forward();
+  delay(2500);
 }
 
 void loop() {
   drive();
 }
+
 
 int measure() {
   samples.clear();
@@ -158,8 +167,6 @@ int checkCompass() {
 }
 
 void navigate() {
-  int newHeading;
-  bool allowBigTurn;
   if (debugging) {
     Serial.println("Navigate");
     Serial.println(distTraveled);
@@ -167,30 +174,23 @@ void navigate() {
   long currentMillis = millis();
   if ((currentMillis - lastNav) > navDelay) {
     if (distTraveled < legDist[0]) {
-      newHeading = legHeading[0];
+      targetHeading = legHeading[0];
     }
     if (distTraveled > legDist[0] && distTraveled < legDist[1]) {
-      newHeading = legHeading[1];
+      targetHeading = legHeading[1];
     }
     if (distTraveled > legDist[1] && distTraveled < legDist[2]) {
-      newHeading = legHeading[2];
+      targetHeading = legHeading[2];
     }
     if (distTraveled > legDist[2] && distTraveled < legDist[3]) {
-      newHeading = legHeading[3];
+      targetHeading = legHeading[3];
     }
     if (distTraveled > legDist[3] && distTraveled < legDist[4]) {
-      newHeading = legHeading[0];
+      targetHeading = legHeading[0];
     }
     if (distTraveled > legDist[4]) {
       stopAll();
       delay(5000);
-    }
-    if (newHeading != targetHeading) {
-      allowBigTurn = true;
-      targetHeading = newHeading;
-    } else {
-      allowBigTurn = false;
-      targetHeading = newHeading;
     }
 
     int currentHeading = checkCompass();
@@ -208,7 +208,7 @@ void navigate() {
       turnDeg -= 360;
     }
     lastNav = currentMillis;
-    headingHold(turnDeg, allowBigTurn);
+    headingHold(turnDeg);
   }
 }
 
@@ -307,17 +307,10 @@ void rightTurn()
   analogWrite(rt, 0);
 }
 
-void headingHold(float delta, bool bigTurn) {
+void headingHold(float delta) {
   if (debugging) {
     Serial.println("Delta \t Big turn");
     Serial.print(delta);
-    Serial.print("\t");
-    Serial.println(bigTurn);
-  }
-
-  // minimize big swinging turns
-  if (!bigTurn && delta > 30) {
-    delta = delta / 3;
   }
 
   int thisDelay = (int) delta / degPerMilli;
